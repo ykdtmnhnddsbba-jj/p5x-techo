@@ -255,7 +255,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
       inp('gRate1a', '交換：認知の断片Ⅰ 何個で') + inp('gRate1b', '→ 自在結晶 何個') + inp('gCap1', '断片Ⅰで交換できる石の月上限（空欄=上限なし）') +
       inp('gRate2a', '交換：認知の断片Ⅱ 何個で') + inp('gRate2b', '→ 自在結晶 何個') +
       '</div><div class="result" id="gOut"></div><p class="muted">' + esc(d.goldNote) + '</p>' +
-      '<p class="muted">1回あたりの目安：★2ペルソナ（93%）で断片Ⅰ×30、被った★4（6.2%）で断片Ⅱ×6、被った★5（0.8%）で断片Ⅱ×30。恒常★5は80連で確定。</p></div>';
+      '<p class="muted">1回あたりの目安：★2ペルソナ（93%）で断片Ⅰ×30、★4（6.2%）は全員完凸済みなので断片Ⅱ×15、被った★5（0.8%）は完凸前として断片Ⅱ×30＋認知結晶。恒常★5は80連で確定。</p></div>';
     $('now').innerHTML = h;
     ['cStone','cTicket','cPulled','gTicket','gRate1a','gRate1b','gCap1','gRate2a','gRate2b'].forEach(function(id){
       var el = $(id); el.value = state.calc[id] != null ? state.calc[id] : '';
@@ -268,7 +268,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   function calc(){
     // ゴールドチケット
     var t = num('gTicket');
-    var f1 = Math.round(t * 0.93 * 30), f2 = Math.round(t * (0.062 * 6 + 0.008 * 30));
+    var f1 = Math.round(t * 0.93 * 30), f2 = Math.round(t * (0.062 * 15 + 0.008 * 30))   // ★4は全員完凸（断片Ⅱ×15）、★5は完凸前（×30）;
     var s5 = Math.max(Math.floor(t / 80), Math.round(t * 0.008));
     var g = 0, parts = [];
     if (num('gRate1a') && num('gRate1b')) {
