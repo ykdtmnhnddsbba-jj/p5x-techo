@@ -59,13 +59,20 @@ a{color:var(--accent)}
 footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
 .theme{float:right;font:inherit;font-size:.8rem;background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 10px;cursor:pointer}
 :focus-visible{outline:3px solid var(--text);outline-offset:2px}
-.roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
-.chara{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.chara{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 .chara.own{border-color:var(--accent);background:var(--accent-soft)}
-.chara .nm{flex:1;min-width:0;line-height:1.3}
-.chara .nm small{display:block;color:var(--muted);font-size:.75rem}
-.chara select{font:inherit;font-size:.85rem;padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
-.chara label{font-size:.75rem;color:var(--muted);display:flex;align-items:center;gap:3px;white-space:nowrap}
+.chara .nm{line-height:1.3}
+.chara .nm small{color:var(--muted);font-size:.75rem;margin-left:6px}
+.seg{display:grid;grid-template-columns:repeat(8,minmax(0,1fr)) auto;gap:3px}
+.seg button{font:inherit;font-size:.8rem;min-width:0;min-height:34px;padding:2px 4px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on);font-weight:700}
+.seg button.wpn{padding:2px 8px}
+.seg button.wpn[aria-pressed="true"]{background:var(--ok);border-color:var(--ok)}
+.seg button:disabled{opacity:.35;cursor:default}
+.sync{float:right;margin-right:6px;font:inherit;font-size:.8rem;background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 10px;cursor:pointer}
+.sync.ok{color:var(--ok);border-color:var(--ok)} .sync.bad{color:var(--accent);border-color:var(--accent)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:.88rem;display:none;max-width:90vw;z-index:9}
 .filters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .filters button{font:inherit;font-size:.82rem;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:4px 10px;border-radius:999px;cursor:pointer}
 .filters button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
@@ -77,6 +84,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
 <main class="wrap">
   <header>
     <button class="theme" id="themeBtn" type="button">表示切替</button>
+    <button class="sync" id="syncChip" type="button">☁ Drive連携</button>
     <h1>P5X攻略手帖</h1>
     <p id="updated">ペルソナ5: The Phantom X（日本版）の自分用メモ</p>
   </header>
@@ -96,7 +104,9 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   <section id="tier" hidden></section>
   <section id="src" hidden></section>
 
-  <footer>データは攻略サイトの記事を要約したもの。「予想」「未確認」は確定情報ではありません。チェックと石メモはこのブラウザだけに保存されます。</footer>
+  <footer>データは攻略サイトの記事を要約したもの。「予想」「未確認」は確定情報ではありません。手持ち・シナジーのチェック・石メモは、右上の「☁ Drive連携」で Google ドライブの p5x-db.json に保存され、スマホとPCで共有できます。</footer>
+  <div id="toast" role="status"></div>
+<script src="../portal/lib/techo-google.js"></script>
 </main>
 <script>
 (function(){
@@ -106,7 +116,10 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   state.own = state.own || {};   // {キャラ名: {c: 凸数(0-6), w: 専用★5武器あり}}
   state.syn = state.syn || {};
   state.calc = state.calc || {};
-  function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {} }
+  state.synT = state.synT || {};  // {'shoki.r3': 更新時刻}
+  state.calcT = state.calcT || 0;
+  function saveLocal(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {} }
+  function save(){ saveLocal(); scheduleSync(); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function stars(n){
     if (n == null) return '<span class="muted">未確認</span>';
@@ -153,9 +166,73 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
     renderNow(); renderMine(); renderSynergy(); renderFuture(); renderTier(); renderSrc();
     var h0 = location.hash.slice(1);
     if (h0 && document.querySelector('main > section#' + h0)) show(h0);
+    gStartup();
   }).catch(function(){
     $('now').innerHTML = '<div class="card">データを読み込めませんでした。</div>';
   });
+
+  // ---------- Google Drive 同期（手帖共通 ../portal/lib/techo-google.js。トークンは全手帖で共有）
+  var CLIENT_ID = '568813131190-9pb3hf0f3g3rbiglkq4nbk88g4eltk9p.apps.googleusercontent.com';
+  var DRIVE_NAME = 'p5x-db.json';
+  var GA = window.TechoGoogle ? TechoGoogle.create({site:'p5x', clientId:function(){ return CLIENT_ID; }}) : null;
+  var gMsg = GA ? GA.message() : '共通ファイル（portal/lib/techo-google.js）を読み込めませんでした。Drive同期は使えません';
+  var fileId = state.driveFileId || null, syncing = false, syncTimer = null, ready = false;
+  var toastT;
+  function toast(t, ms){ var e = $('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(function(){ e.style.display = 'none'; }, ms || 2500); }
+  function setSync(s){
+    var map = {off:['☁ Drive連携',''], need:['☁ 要再接続','bad'], ok:['☁ 同期済み','ok'], dirty:['☁ 未同期…','bad'], busy:['☁ 同期中…',''], bad:['☁ 同期エラー','bad']};
+    var m = map[s] || map.off, c = $('syncChip'); c.textContent = m[0]; c.className = 'sync ' + m[1];
+  }
+  function tokenOk(){ var t = GA && GA.token(); return t && Date.now() < t.e - 60000; }
+  function body(){
+    return JSON.stringify({_readme:'P5X攻略手帖のデータ。own=手持ち★5（c=凸数 -1は未所持, w=専用★5武器, t=更新時刻）、syn=シナジーのチェック、calc=石メモ', schema_version:1, updated_at:new Date().toISOString(),
+      own:state.own, syn:state.syn, synT:state.synT, calc:state.calc, calcT:state.calcT}, null, 1);
+  }
+  function mergeRemote(r){
+    var changed = false;
+    Object.keys(r.own || {}).forEach(function(n){
+      var a = state.own[n], b = r.own[n];
+      if (b && (!a || (b.t || 0) > (a.t || 0))) { state.own[n] = b; changed = true; }
+    });
+    Object.keys(r.synT || {}).forEach(function(k){
+      if (r.synT[k] > (state.synT[k] || 0)) {
+        var p = k.split('.'), v = r.syn && r.syn[p[0]] ? !!r.syn[p[0]][p[1]] : false;
+        state.syn[p[0]] = state.syn[p[0]] || {}; state.syn[p[0]][p[1]] = v; state.synT[k] = r.synT[k]; changed = true;
+      }
+    });
+    if ((r.calcT || 0) > state.calcT) { state.calc = r.calc || {}; state.calcT = r.calcT; changed = true; }
+    if (changed) { saveLocal(); if (D) { renderNow(); renderMine(); renderSynergy(); renderFuture(); } }
+  }
+  function sync(interactive){
+    if (syncing || !GA) return Promise.resolve(false);
+    if (!tokenOk()) {
+      if (interactive) { GA.redirect('', GA.DRIVE); return Promise.resolve(false); }
+      setSync('need'); return Promise.resolve(false);
+    }
+    syncing = true; setSync('busy');
+    return GA.syncFile(DRIVE_NAME, fileId, function(remote){ mergeRemote(remote); }, body).then(function(id){
+      fileId = state.driveFileId = id; state.driveLinked = true; saveLocal(); setSync('ok'); return true;
+    }).catch(function(e){
+      if (e && e.forget) { fileId = state.driveFileId = null; saveLocal(); }
+      setSync(interactive ? 'bad' : 'need'); if (interactive) toast(e.message, 5000); console.warn(e); return false;
+    }).then(function(r){ syncing = false; return r; });
+  }
+  function scheduleSync(){
+    if (!state.driveLinked || !ready) return;
+    setSync('dirty'); clearTimeout(syncTimer);
+    syncTimer = setTimeout(function(){ if (tokenOk()) sync(false); else setSync('need'); }, 2500);
+  }
+  $('syncChip').onclick = function(){ sync(true).then(function(ok){ if (ok) toast('Driveと同期しました'); }); };
+  addEventListener('pageshow', function(e){ if (e.persisted) { syncing = false; if (state.driveLinked) sync(false); } });
+  function gStartup(){
+    ready = true;
+    if (gMsg) { var m = gMsg; gMsg = ''; setTimeout(function(){ toast(m, 6000); }, 400); }
+    if (!GA) return;
+    if (tokenOk()) { state.driveLinked = true; sync(false); return; }   // 他の手帖でログイン済みならそのまま使う
+    if (!state.driveLinked) return;
+    if (!GA.silentOk()) { setSync('need'); return; }
+    GA.redirect('none', GA.DRIVE);
+  }
 
   // ---------- いまの結論
   function renderNow(){
@@ -182,7 +259,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
     $('now').innerHTML = h;
     ['cStone','cTicket','cPulled','gTicket','gRate1a','gRate1b','gCap1','gRate2a','gRate2b'].forEach(function(id){
       var el = $(id); el.value = state.calc[id] != null ? state.calc[id] : '';
-      el.oninput = function(){ state.calc[id] = el.value; save(); calc(); };
+      el.oninput = function(){ state.calc[id] = el.value; state.calcT = Date.now(); save(); calc(); };
     });
     calc();
   }
@@ -216,14 +293,14 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   var mineFilter = state.mineFilter || 'all';
   function renderMine(){
     var d = D, roles = ['all','own','not'];
-    var h = '<div class="card"><h2>手持ちの★5キャラ</h2><p class="muted">凸数を選ぶと所持扱いになる（「―」は未所持）。専用★5武器を持っていたら「武器」にチェック。このブラウザに保存される。</p>' +
+    var h = '<div class="card"><h2>手持ちの★5キャラ</h2><p class="muted">数字（0=無凸〜6凸）を押すと所持扱いになる。「―」で未所持に戻す。専用★5武器を持っていたら「武器」を押す。Drive連携していればスマホと共有される。</p>' +
       '<div class="filters" id="mf">' +
       [['all','全員'],['own','所持だけ'],['not','未所持だけ'],['限定','限定'],['恒常','恒常']].map(function(f){ return '<button type="button" data-f="' + f[0] + '" aria-pressed="' + (mineFilter === f[0]) + '">' + f[1] + '</button>'; }).join('') +
       '</div><div class="roster" id="rosterList"></div><p class="muted" id="mineSum"></p><p class="muted">' + esc(d.rosterNote) + '</p></div>';
     $('mine').innerHTML = h;
     $('mf').onclick = function(e){
       var b = e.target.closest('button'); if (!b) return;
-      mineFilter = state.mineFilter = b.dataset.f; save();
+      mineFilter = state.mineFilter = b.dataset.f; saveLocal();
       $('mf').querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-pressed', x === b); });
       drawRoster();
     };
@@ -236,27 +313,27 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
       if (mineFilter === 'own' && !has) return;
       if (mineFilter === 'not' && has) return;
       if ((mineFilter === '限定' || mineFilter === '恒常') && r.kind !== mineFilter) return;
-      var opts = '<option value="-1">―</option>';
-      for (var c = 0; c <= 6; c++) opts += '<option value="' + c + '"' + (has && o.c === c ? ' selected' : '') + '>' + (c ? c + '凸' : '無凸') + '</option>';
+      var seg = '<button type="button" data-n="' + i + '" data-c="-1" aria-pressed="' + !has + '" aria-label="' + esc(r.name) + ' 未所持">―</button>';
+      for (var c = 0; c <= 6; c++) seg += '<button type="button" data-n="' + i + '" data-c="' + c + '" aria-pressed="' + (has && o.c === c) + '" aria-label="' + esc(r.name) + ' ' + (c ? c + '凸' : '無凸') + '">' + c + '</button>';
+      seg += '<button type="button" class="wpn" data-w="' + i + '" aria-pressed="' + !!(has && o.w) + '"' + (has ? '' : ' disabled') + '>武器</button>';
       h += '<div class="chara' + (has ? ' own' : '') + '"><span class="nm"><b>' + esc(r.name) + '</b><small>' + esc((r.real ? r.real + '・' : '') + r.role + '／' + r.elem + '・' + r.kind) + '</small></span>' +
-        '<select data-n="' + i + '" aria-label="' + esc(r.name) + 'の凸数">' + opts + '</select>' +
-        '<label><input type="checkbox" data-w="' + i + '"' + (o.w ? ' checked' : '') + (has ? '' : ' disabled') + '>武器</label></div>';
+        '<div class="seg">' + seg + '</div></div>';
     });
     $('rosterList').innerHTML = h || '<p class="muted">該当なし</p>';
+    $('rosterList').onclick = function(e){
+      var b = e.target.closest('button'); if (!b || b.disabled) return;
+      if (b.dataset.c != null) {
+        var r = D.roster[+b.dataset.n], v = +b.dataset.c, o = state.own[r.name] || {};
+        o.c = v; o.t = Date.now(); if (v < 0) o.w = false; state.own[r.name] = o;
+      } else if (b.dataset.w != null) {
+        var o2 = state.own[D.roster[+b.dataset.w].name]; if (!o2) return;
+        o2.w = !o2.w; o2.t = Date.now();
+      } else return;
+      save(); drawRoster(); renderNow(); renderFuture();
+    };
     var n = D.roster.filter(function(r){ return own(r.name); }).length;
     $('mineSum').textContent = '所持 ' + n + ' / ' + D.roster.length + '体';
   }
-  document.addEventListener('change', function(e){
-    var el = e.target;
-    if (el.dataset && el.dataset.n != null) {
-      var r = D.roster[+el.dataset.n], v = +el.value, o = state.own[r.name] || {};
-      if (v < 0) delete state.own[r.name]; else { o.c = v; state.own[r.name] = o; }
-      save(); drawRoster(); renderNow(); renderFuture();
-    } else if (el.dataset && el.dataset.w != null) {
-      var r2 = D.roster[+el.dataset.w], o2 = state.own[r2.name]; if (!o2) return;
-      o2.w = el.checked; save(); renderNow();
-    }
-  });
 
   // ---------- シナジー
   function renderSynergy(){
@@ -284,7 +361,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
     syn.innerHTML = sh;
     syn.onchange = function(e){
       var cb = e.target; if (!cb.dataset || !cb.dataset.s) return;
-      state.syn[cb.dataset.s][cb.dataset.k] = cb.checked; save();
+      state.syn[cb.dataset.s][cb.dataset.k] = cb.checked; state.synT[cb.dataset.s + '.' + cb.dataset.k] = Date.now(); save();
       cb.closest('tr').className = cb.checked ? 'done' : '';
     };
   }
