@@ -92,7 +92,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
     <button role="tab" data-tab="now" aria-selected="true">いまの結論</button>
     <button role="tab" data-tab="mine" aria-selected="false">手持ち</button>
     <button role="tab" data-tab="synergy" aria-selected="false">シナジー</button>
-    <button role="tab" data-tab="future" aria-selected="false">今後のキャラ</button>
+    <button role="tab" data-tab="future" aria-selected="false">ガチャ計画</button>
     <button role="tab" data-tab="tier" aria-selected="false">Tier・ガチャ・武器</button>
     <button role="tab" data-tab="src" aria-selected="false">資料</button>
   </nav>
@@ -127,7 +127,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   }
   function link(u, t){ return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(t || '出典') + '</a>'; }
   function $(id){ return document.getElementById(id); }
-  var D = null;
+  var D = null, lastGold = 0;
 
   // 手持ちの判定: 「暴走ルーチェ（池波星輝）」のような表記も先頭一致で拾う（長い名前を優先）
   function rosterOf(label){
@@ -186,7 +186,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   function tokenOk(){ var t = GA && GA.token(); return t && Date.now() < t.e - 60000; }
   function body(){
     return JSON.stringify({_readme:'P5X攻略手帖のデータ。own=手持ち★5（c=凸数 -1は未所持, w=専用★5武器, t=更新時刻）、syn=シナジーのチェック、calc=石メモ', schema_version:1, updated_at:new Date().toISOString(),
-      own:state.own, syn:state.syn, synT:state.synT, calc:state.calc, calcT:state.calcT}, null, 1);
+      own:state.own, plan:state.plan || {}, syn:state.syn, synT:state.synT, calc:state.calc, calcT:state.calcT}, null, 1);
   }
   function mergeRemote(r){
     var changed = false;
@@ -200,6 +200,8 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
         state.syn[p[0]] = state.syn[p[0]] || {}; state.syn[p[0]][p[1]] = v; state.synT[k] = r.synT[k]; changed = true;
       }
     });
+    state.plan = state.plan || {};
+    Object.keys(r.plan || {}).forEach(function(n){ var a = state.plan[n], b = r.plan[n]; if (b && (!a || (b.t || 0) > (a.t || 0))) { state.plan[n] = b; changed = true; } });
     if ((r.calcT || 0) > state.calcT) { state.calc = r.calc || {}; state.calcT = r.calcT; changed = true; }
     if (changed) { saveLocal(); if (D) { renderNow(); renderMine(); renderSynergy(); renderFuture(); } }
   }
@@ -259,7 +261,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
     $('now').innerHTML = h;
     ['cStone','cTicket','cPulled','gTicket','gRate1a','gRate1b','gCap1','gRate2a','gRate2b'].forEach(function(id){
       var el = $(id); el.value = state.calc[id] != null ? state.calc[id] : '';
-      el.oninput = function(){ state.calc[id] = el.value; state.calcT = Date.now(); save(); calc(); };
+      el.oninput = function(){ state.calc[id] = el.value; state.calcT = Date.now(); save(); calc(); if ($("planBody")) renderFuture(); };
     });
     calc();
   }
@@ -282,7 +284,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
       (rated ? '→ 石に換えると <b>約' + Math.floor(g).toLocaleString() + '石</b>（限定 <b>' + Math.floor(g / 150) + '連</b>分）' : '→ 交換レートを入れると石の数が出る') +
       (parts.length ? '<br><span class="muted">' + esc(parts.join('／')) + '</span>' : '')) : 'ゴールドチケットの枚数を入れてね。';
     // 限定の天井
-    var bonus = Math.floor(g);
+    var bonus = Math.floor(g); lastGold = g;
     var s = num('cStone') + bonus, tk = num('cTicket'), p = num('cPulled');
     var have = Math.floor(s / 150) + tk, need = Math.max(0, 110 - p);
     $('cOut').innerHTML = '手持ちで <b>' + have + '連</b>' + (bonus ? '（ゴールドチケット分 ' + Math.floor(bonus / 150) + '連 を含む）' : '') + ' ・ 天井まで <b>' + need + '連</b> → ' +
@@ -369,15 +371,46 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   // ---------- 今後のキャラ
   function renderFuture(){
     var today = new Date().toISOString().slice(0, 10);
-    var fh = '<div class="card"><h2>今後のガチャ予想とおすすめ度</h2><div class="scroll"><table class="tbl"><thead><tr><th>時期</th><th>キャラ</th><th>おすすめ度</th><th>理由</th><th>手持ちと相性</th></tr></thead><tbody>';
-    D.upcoming.forEach(function(u){
-      var mates = (u.with || []).filter(function(n){ return own(n); });
-      var fit = !(u.with || []).length ? '<span class="muted">―</span>' :
-        (mates.length ? '<span class="ok">◎ ' + esc(mates.join('、')) + '</span>' : '<span class="muted">相性の良いキャラ（' + esc(u.with.join('、')) + '）が未所持 → 優先度を下げてOK</span>');
-      fh += '<tr' + (u.date < today ? ' class="done"' : '') + '><td>' + esc(u.date) + '<br><span class="tag">' + esc(u.sure) + '</span></td><td><b>' + esc(u.name) + '</b><br><span class="muted">' + esc(u.kind) + '<br>' + esc(u.role) + '</span></td><td>' + stars(u.pull) + '</td><td>' + esc(u.why) + '</td><td>' + fit + '</td></tr>';
-    });
-    fh += '</tbody></table></div><p class="muted">' + esc(D.upcomingNote) + '</p></div>';
+    state.plan = state.plan || {};
+    function planned(n){ var p = state.plan[n]; return !!(p && p.on); }
+    function has(n){ return own(n) || D.upcoming.some(function(u){ return u.name.indexOf(n) === 0 && planned(u.name); }); }
+    var fh = '<div class="card hl"><h2>ガチャ計画（引く予定にチェック）</h2>' +
+      '<p class="muted">「引く」にチェックすると、天井（110連＝16,500石）で確保する前提で、その日までに石が足りるかを出す。今の石は「いまの結論」の石メモ（ゴールドチケット分も込み）を使う。</p>' +
+      '<div class="calc">' + inp('pIncome', '2週間で貯まる石（目安・自分で入力）') + inp('pPity', '持ち越している限定ガチャの回数') + '</div>' +
+      '<div class="scroll"><table class="tbl"><thead><tr><th>引く</th><th>時期</th><th>キャラ</th><th>大陸版Tier</th><th>おすすめ度</th><th>理由</th><th>手持ちと相性</th><th>石</th></tr></thead><tbody id="planBody"></tbody></table></div>' +
+      '<p class="muted">' + esc(D.upcomingNote) + '</p></div>';
     $('future').innerHTML = fh;
+    ['pIncome','pPity'].forEach(function(id){
+      var el = $(id); el.value = state.calc[id] != null ? state.calc[id] : '';
+      el.oninput = function(){ state.calc[id] = el.value; state.calcT = Date.now(); save(); drawPlan(); };
+    });
+    function drawPlan(){
+      var base = num('cStone') + Math.floor(lastGold) + num('cTicket') * 150, inc = num('pIncome'), used = 0, carry = num('pPity'), rows = '';
+      D.upcoming.forEach(function(u){
+        var mates = (u.with || []).filter(has);
+        var weak = u.need && !mates.length;
+        var p = u.pull == null ? null : (weak ? Math.max(1, u.pull - 2) : u.pull);
+        var fit = !(u.with || []).length ? '<span class="muted">―</span>' :
+          (mates.length ? '<span class="ok">◎ ' + esc(mates.join('、')) + '</span>' : '<span class="muted">' + esc(u.ifNot || ('相性の良いキャラ（' + u.with.join('、') + '）が未所持')) + '</span>');
+        var on = planned(u.name), stone = '';
+        if (on) {
+          var need = Math.max(0, 110 - carry) * 150; carry = 0; used += need;
+          var days = Math.max(0, (new Date(u.date) - new Date(today)) / 86400000);
+          var avail = base + inc * days / 14;
+          stone = avail >= used ? '<span class="ok">足りる</span><br><span class="muted">残り約' + Math.floor(avail - used).toLocaleString() + '石</span>' : '<span style="color:var(--accent);font-weight:700">' + Math.ceil(used - avail).toLocaleString() + '石不足</span>';
+        }
+        var ev = u.kind === 'イベント';
+        rows += '<tr' + (u.date < today ? ' class="done"' : '') + '><td>' + (ev ? '' : '<input type="checkbox" data-plan="' + esc(u.name) + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(u.name) + 'を引く">') + '</td>' +
+          '<td>' + esc(u.date) + '<br><span class="tag">' + esc(u.sure) + '</span></td><td><b>' + esc(u.name) + '</b><br><span class="muted">' + esc(u.kind) + '<br>' + esc(u.role) + '</span></td>' +
+          '<td>' + esc(u.tier || '―') + '</td><td>' + stars(p) + '</td><td>' + esc(u.why) + '</td><td>' + fit + '</td><td>' + stone + '</td></tr>';
+      });
+      $('planBody').innerHTML = rows;
+    }
+    $('planBody').onchange = function(e){
+      var n = e.target.dataset && e.target.dataset.plan; if (!n) return;
+      state.plan[n] = {on: e.target.checked, t: Date.now()}; save(); drawPlan();
+    };
+    drawPlan();
   }
 
   // ---------- Tier・ガチャ・武器
@@ -386,6 +419,9 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
     var th = '<div class="card"><h2>最強キャラTier（無凸）</h2><table class="tbl"><tbody>';
     d.tier.rows.forEach(function(r){ th += '<tr><th style="width:9em">' + esc(r[0]) + '</th><td>' + esc(r[1]) + '</td></tr>'; });
     th += '</tbody></table><p class="muted">' + esc(d.tier.note) + ' 出典：' + link(d.tier.src, 'GameWith') + '（' + esc(d.tier.date) + '更新）</p></div>';
+    th += '<div class="card"><h2>大陸版の先行Tier（未実装キャラ込み）</h2><table class="tbl"><tbody>';
+    (d.tier.lufel || []).forEach(function(r){ th += '<tr><th style="width:5em">' + esc(r[0]) + '</th><td>' + esc(r[1]) + '</td></tr>'; });
+    th += '</tbody></table><p class="muted">ルフェルネットの「[ネタバレ] 韓国版」Tier（2026-11-23閲覧）。競争コンテンツ基準・凸なし基準。SN＝スターナイト（P5Dコラボ）。日本の攻略サイトとは評価がずれることがある。' + link("https://lufel.net/jp/tier/", "ルフェルネット") + '</p></div>';
     th += '<div class="card hl"><h2>武器ガチャは引く？ 凸とどっちが先？</h2><ul class="pts">';
     d.weapon.verdict.forEach(function(v){ th += '<li>' + esc(v) + '</li>'; });
     th += '</ul><h3>武器ガチャの仕組み</h3><table class="tbl"><tbody>';
