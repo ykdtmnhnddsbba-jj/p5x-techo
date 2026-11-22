@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>P5X攻略手帖</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f3f4; --surface:#ffffff; --text:#1d1a1c; --muted:#655c62; --line:#e4dde1;
+  --accent:#c8102e; --accent-soft:#fbe7ea; --ok:#2f7d4f; --on:#ffffff;
+  --font-display:"Zen Maru Gothic","Hiragino Maru Gothic ProN",sans-serif;
+  --font-body:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#141113; --surface:#1f1a1d; --text:#f1ecef; --muted:#b3a8ae; --line:#3a3036;
+    --accent:#ff5c74; --accent-soft:#3a1d24; --ok:#7fd3a0; --on:#141113; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141113; --surface:#1f1a1d; --text:#f1ecef; --muted:#b3a8ae; --line:#3a3036;
+  --accent:#ff5c74; --accent-soft:#3a1d24; --ok:#7fd3a0; --on:#141113; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);line-height:1.65}
+.wrap{max-width:920px;margin:0 auto;padding:32px 16px 56px}
+header h1{font-family:var(--font-display);font-size:1.7rem;margin:0}
+header p{margin:2px 0 18px;color:var(--muted);font-size:.9rem}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+nav button{font:inherit;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:8px 14px;border-radius:999px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--on)}
+section[hidden]{display:none}
+h2{font-family:var(--font-display);font-size:1.25rem;margin:0 0 10px}
+h3{font-size:1.02rem;margin:18px 0 8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+.card.hl{border-left:6px solid var(--accent)}
+ul.pts{margin:0;padding-left:1.2em} ul.pts li{margin:4px 0}
+.muted{color:var(--muted);font-size:.85rem}
+.tbl{width:100%;border-collapse:collapse;font-size:.92rem}
+.tbl th,.tbl td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-size:.8rem;color:var(--muted);font-weight:700}
+.scroll{overflow-x:auto}
+.ans{font-weight:700;color:var(--accent)}
+.stars{color:var(--accent);letter-spacing:1px;white-space:nowrap}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.done td{opacity:.5}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+.calc{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.calc label{display:flex;flex-direction:column;font-size:.85rem;color:var(--muted);gap:4px}
+.calc input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
+.result{margin-top:12px;font-size:1rem}
+.result b{color:var(--accent)}
+a{color:var(--accent)}
+footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
+.theme{float:right;font:inherit;font-size:.8rem;background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 10px;cursor:pointer}
+:focus-visible{outline:3px solid var(--text);outline-offset:2px}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <button class="theme" id="themeBtn" type="button">表示切替</button>
+    <h1>P5X攻略手帖</h1>
+    <p id="updated">ペルソナ5: The Phantom X（日本版）の自分用メモ</p>
+  </header>
+  <nav role="tablist" id="tabs">
+    <button role="tab" data-tab="now" aria-selected="true">いまの結論</button>
+    <button role="tab" data-tab="synergy" aria-selected="false">シナジー</button>
+    <button role="tab" data-tab="future" aria-selected="false">今後のキャラ</button>
+    <button role="tab" data-tab="tier" aria-selected="false">Tier・ガチャ</button>
+    <button role="tab" data-tab="src" aria-selected="false">資料</button>
+  </nav>
+
+  <section id="now"></section>
+  <section id="synergy" hidden></section>
+  <section id="future" hidden></section>
+  <section id="tier" hidden></section>
+  <section id="src" hidden></section>
+
+  <footer>データは攻略サイトの記事を要約したもの。「予想」「未確認」は確定情報ではありません。チェックと石メモはこのブラウザだけに保存されます。</footer>
+</main>
+<script>
+(function(){
+  var KEY = 'p5x.v1';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch(e) { state = {}; }
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {} }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function stars(n){ return '<span class="stars" aria-label="' + n + '/5">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>'; }
+  function link(u, t){ return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(t || '出典') + '</a>'; }
+
+  // theme toggle
+  var tb = document.getElementById('themeBtn');
+  if (state.theme) document.documentElement.setAttribute('data-theme', state.theme);
+  tb.onclick = function(){
+    var dark = state.theme ? state.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    state.theme = dark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', state.theme); save();
+  };
+
+  // tabs
+  var tabs = document.querySelectorAll('#tabs button');
+  function show(id){
+    tabs.forEach(function(b){ b.setAttribute('aria-selected', b.dataset.tab === id ? 'true' : 'false'); });
+    document.querySelectorAll('main > section').forEach(function(s){ s.hidden = s.id !== id; });
+    if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
+  }
+  tabs.forEach(function(b){ b.onclick = function(){ show(b.dataset.tab); }; });
+  addEventListener('hashchange', function(){ var h = location.hash.slice(1); if (h && document.querySelector('main > section#' + h)) show(h); });
+
+  fetch('data/p5x.json', {cache:'no-cache'}).then(function(r){ return r.json(); }).then(render).catch(function(){
+    document.getElementById('now').innerHTML = '<div class="card">データを読み込めませんでした。</div>';
+  });
+
+  function render(d){
+    document.getElementById('updated').textContent = 'ペルソナ5: The Phantom X（日本版）の自分用メモ ・ 情報は ' + d.updated + ' 時点';
+
+    // ---- now
+    var h = '<div class="card hl"><h2>' + esc(d.verdict.title) + '</h2><ul class="pts">';
+    d.verdict.points.forEach(function(p){ h += '<li>' + esc(p) + '</li>'; });
+    h += '</ul></div>';
+    h += '<div class="card"><h2>開催中のガチャ</h2><div class="scroll"><table class="tbl"><thead><tr><th>キャラ</th><th>ロール</th><th>引くべき度</th><th>期限</th><th>ひとこと</th></tr></thead><tbody>';
+    d.current.forEach(function(c){
+      h += '<tr><td><b>' + esc(c.name) + '</b></td><td>' + esc(c.role) + '</td><td>' + stars(c.pull) + '</td><td>' + esc(c.until) + '</td><td>' + esc(c.memo) + ' ' + link(c.src) + '</td></tr>';
+    });
+    h += '</tbody></table></div><p class="muted">引くべき度は GameWith の評価（2026-11-13〜19更新）。</p></div>';
+    h += '<div class="card"><h2>石メモ（天井まであと何連？）</h2><div class="calc">' +
+      '<label>自在結晶（石）<input id="cStone" type="number" min="0" inputmode="numeric"></label>' +
+      '<label>限定チケット（枚）<input id="cTicket" type="number" min="0" inputmode="numeric"></label>' +
+      '<label>今のガチャで引いた回数<input id="cPulled" type="number" min="0" max="110" inputmode="numeric"></label>' +
+      '</div><div class="result" id="cOut"></div><p class="muted">限定は110連でピックアップ確定。1連=150石で計算。</p></div>';
+    document.getElementById('now').innerHTML = h;
+    var calc = state.calc || {};
+    ['cStone','cTicket','cPulled'].forEach(function(id){
+      var el = document.getElementById(id); el.value = calc[id] != null ? calc[id] : '';
+      el.oninput = function(){ calc[id] = el.value; state.calc = calc; save(); upd(); };
+    });
+    function upd(){
+      var s = +calc.cStone || 0, t = +calc.cTicket || 0, p = +calc.cPulled || 0;
+      var have = Math.floor(s / 150) + t, need = Math.max(0, 110 - p);
+      document.getElementById('cOut').innerHTML = '手持ちで <b>' + have + '連</b> ・ 天井まで <b>' + need + '連</b> → ' +
+        (have >= need ? '<b>天井まで届く</b>（' + (have - need) + '連あまる）' : 'あと <b>' + (need - have) + '連</b>（' + ((need - have) * 150).toLocaleString() + '石）足りない');
+    }
+    upd();
+
+    // ---- synergy
+    state.syn = state.syn || {};
+    var sh = '';
+    d.synergies.forEach(function(s){
+      var done = state.syn[s.id] = state.syn[s.id] || {};
+      sh += '<div class="card hl"><h2>' + esc(s.name) + '<span class="tag" style="margin-left:8px">' + esc(s.codename) + '</span></h2>' +
+        '<p><b>解放条件：</b>' + esc(s.unlock) + '<br><b>必要パラメータ：</b>' + esc(s.param) + '<br><b>優先度：</b>' + esc(s.priority) + '</p>' +
+        '<p class="muted">' + esc(s.paramTips) + '</p>' +
+        '<h3>必要な魅力レベル</h3><div class="scroll"><table class="tbl"><tr><th>Rank</th>' + s.paramNeeds.map(function(x){ return '<td>' + x[0] + '</td>'; }).join('') + '</tr><tr><th>魅力</th>' + s.paramNeeds.map(function(x){ return '<td>' + x[1] + '</td>'; }).join('') + '</tr></table></div>' +
+        '<h3>ランクアップ時の選択肢（正解＝太字）</h3><div class="scroll"><table class="tbl"><thead><tr><th>済</th><th>Rank</th><th>正解</th><th>ほかの選択肢</th></tr></thead><tbody>';
+      s.ranks.forEach(function(r){
+        var k = 'r' + r[0];
+        sh += '<tr class="' + (done[k] ? 'done' : '') + '"><td><input type="checkbox" data-s="' + s.id + '" data-k="' + k + '"' + (done[k] ? ' checked' : '') + ' aria-label="Rank' + r[0] + '済"></td><td>' + r[0] + '</td><td class="ans">' + esc(r[1]) + '</td><td class="muted">' + esc(r[2]) + '</td></tr>';
+      });
+      sh += '</tbody></table></div><h3>お出かけ（デート）の選択肢</h3><div class="scroll"><table class="tbl"><thead><tr><th>場所</th><th>正解</th><th>もう一方</th></tr></thead><tbody>';
+      s.dates.forEach(function(r){ sh += '<tr><td>' + esc(r[0]) + '</td><td class="ans">' + esc(r[1]) + '</td><td class="muted">' + esc(r[2]) + '</td></tr>'; });
+      sh += '</tbody></table></div><h3>好きなプレゼント</h3><div class="scroll"><table class="tbl"><thead><tr><th>品物</th><th>好感度</th><th>値段</th><th>買える所</th></tr></thead><tbody>';
+      s.gifts.forEach(function(g){ sh += '<tr><td>' + esc(g[0]) + '</td><td>+' + g[1] + '</td><td>' + esc(g[2]) + '</td><td>' + esc(g[3]) + '</td></tr>'; });
+      sh += '</tbody></table></div><p class="muted">' + esc(s.giftNote) + '</p>' +
+        '<h3>シナジーで解放されるもの</h3><ul class="pts">' + s.bonuses.map(function(b){ return '<li>Rank' + b[0] + '：' + esc(b[1]) + '</li>'; }).join('') + '</ul>' +
+        '<p class="muted">出典：' + link(s.source, 'GameWith') + '（' + esc(s.sourceDate) + '更新）</p></div>';
+    });
+    var syn = document.getElementById('synergy');
+    syn.innerHTML = sh;
+    syn.addEventListener('change', function(e){
+      var cb = e.target; if (!cb.dataset || !cb.dataset.s) return;
+      state.syn[cb.dataset.s][cb.dataset.k] = cb.checked; save();
+      cb.closest('tr').className = cb.checked ? 'done' : '';
+    });
+
+    // ---- future
+    var today = new Date().toISOString().slice(0, 10);
+    var fh = '<div class="card"><h2>今後の実装予想（日本版）</h2><div class="scroll"><table class="tbl"><thead><tr><th>時期</th><th>キャラ</th><th>種類・性能</th><th>無課金の判断</th></tr></thead><tbody>';
+    d.upcoming.forEach(function(u){
+      fh += '<tr' + (u.date < today ? ' class="done"' : '') + '><td>' + esc(u.date) + '<br><span class="tag">' + esc(u.sure) + '</span></td><td><b>' + esc(u.name) + '</b></td><td>' + esc(u.kind) + '<br><span class="muted">' + esc(u.role) + '</span></td><td>' + esc(u.advice) + '</td></tr>';
+    });
+    fh += '</tbody></table></div><p class="muted">' + esc(d.upcomingNote) + '</p></div>';
+    document.getElementById('future').innerHTML = fh;
+
+    // ---- tier & gacha
+    var th = '<div class="card"><h2>最強キャラTier（無凸）</h2><table class="tbl"><tbody>';
+    d.tier.rows.forEach(function(r){ th += '<tr><th style="width:9em">' + esc(r[0]) + '</th><td>' + esc(r[1]) + '</td></tr>'; });
+    th += '</tbody></table><p class="muted">' + esc(d.tier.note) + ' 出典：' + link(d.tier.src, 'GameWith') + '（' + esc(d.tier.date) + '更新）</p></div>';
+    th += '<div class="card"><h2>ガチャの仕組み</h2><table class="tbl"><tbody>';
+    d.gacha.forEach(function(g){ th += '<tr><th style="width:9em">' + esc(g[0]) + '</th><td>' + esc(g[1]) + '</td></tr>'; });
+    th += '</tbody></table></div>';
+    document.getElementById('tier').innerHTML = th;
+
+    // ---- sources
+    var srh = '<div class="card"><h2>資料</h2><ul class="pts">';
+    d.sources.forEach(function(s){ srh += '<li>' + link(s[1], s[0]) + '</li>'; });
+    srh += '</ul></div>';
+    document.getElementById('src').innerHTML = srh;
+
+    var h0 = location.hash.slice(1);
+    if (h0 && document.querySelector('main > section#' + h0)) show(h0);
+  }
+})();
+</script>
+</body>
+</html>
