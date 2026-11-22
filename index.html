@@ -59,6 +59,18 @@ a{color:var(--accent)}
 footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
 .theme{float:right;font:inherit;font-size:.8rem;background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 10px;cursor:pointer}
 :focus-visible{outline:3px solid var(--text);outline-offset:2px}
+.roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.chara{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.chara.own{border-color:var(--accent);background:var(--accent-soft)}
+.chara .nm{flex:1;min-width:0;line-height:1.3}
+.chara .nm small{display:block;color:var(--muted);font-size:.75rem}
+.chara select{font:inherit;font-size:.85rem;padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
+.chara label{font-size:.75rem;color:var(--muted);display:flex;align-items:center;gap:3px;white-space:nowrap}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.filters button{font:inherit;font-size:.82rem;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:4px 10px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+.mineTag{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--ok);color:var(--on);white-space:nowrap}
+.ok{color:var(--ok);font-weight:700}
 </style>
 </head>
 <body>
@@ -70,13 +82,15 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   </header>
   <nav role="tablist" id="tabs">
     <button role="tab" data-tab="now" aria-selected="true">いまの結論</button>
+    <button role="tab" data-tab="mine" aria-selected="false">手持ち</button>
     <button role="tab" data-tab="synergy" aria-selected="false">シナジー</button>
     <button role="tab" data-tab="future" aria-selected="false">今後のキャラ</button>
-    <button role="tab" data-tab="tier" aria-selected="false">Tier・ガチャ</button>
+    <button role="tab" data-tab="tier" aria-selected="false">Tier・ガチャ・武器</button>
     <button role="tab" data-tab="src" aria-selected="false">資料</button>
   </nav>
 
   <section id="now"></section>
+  <section id="mine" hidden></section>
   <section id="synergy" hidden></section>
   <section id="future" hidden></section>
   <section id="tier" hidden></section>
@@ -89,15 +103,35 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   var KEY = 'p5x.v1';
   var state = {};
   try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch(e) { state = {}; }
+  state.own = state.own || {};   // {キャラ名: {c: 凸数(0-6), w: 専用★5武器あり}}
+  state.syn = state.syn || {};
+  state.calc = state.calc || {};
   function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {} }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-  function stars(n){ return '<span class="stars" aria-label="' + n + '/5">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>'; }
+  function stars(n){
+    if (n == null) return '<span class="muted">未確認</span>';
+    return '<span class="stars" aria-label="' + n + '/5">' + '★★★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★★★'.slice(n) + '</span></span>';
+  }
   function link(u, t){ return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(t || '出典') + '</a>'; }
+  function $(id){ return document.getElementById(id); }
+  var D = null;
+
+  // 手持ちの判定: 「暴走ルーチェ（池波星輝）」のような表記も先頭一致で拾う（長い名前を優先）
+  function rosterOf(label){
+    var hit = null;
+    D.roster.forEach(function(r){ if (label.indexOf(r.name) === 0 && (!hit || r.name.length > hit.name.length)) hit = r; });
+    return hit;
+  }
+  function own(name){ var o = state.own[name]; return o && o.c != null && o.c >= 0 ? o : null; }
+  function ownTag(label){
+    var r = rosterOf(label); if (!r) return '';
+    var o = own(r.name); if (!o) return '';
+    return ' <span class="mineTag">所持 ' + (o.c ? o.c + '凸' : '無凸') + (o.w ? '・武器' : '') + '</span>';
+  }
 
   // theme toggle
-  var tb = document.getElementById('themeBtn');
   if (state.theme) document.documentElement.setAttribute('data-theme', state.theme);
-  tb.onclick = function(){
+  $('themeBtn').onclick = function(){
     var dark = state.theme ? state.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
     state.theme = dark ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', state.theme); save();
@@ -113,45 +147,121 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   tabs.forEach(function(b){ b.onclick = function(){ show(b.dataset.tab); }; });
   addEventListener('hashchange', function(){ var h = location.hash.slice(1); if (h && document.querySelector('main > section#' + h)) show(h); });
 
-  fetch('data/p5x.json', {cache:'no-cache'}).then(function(r){ return r.json(); }).then(render).catch(function(){
-    document.getElementById('now').innerHTML = '<div class="card">データを読み込めませんでした。</div>';
+  fetch('data/p5x.json', {cache:'no-cache'}).then(function(r){ return r.json(); }).then(function(d){
+    D = d;
+    $('updated').textContent = 'ペルソナ5: The Phantom X（日本版）の自分用メモ ・ 情報は ' + d.updated + ' 時点';
+    renderNow(); renderMine(); renderSynergy(); renderFuture(); renderTier(); renderSrc();
+    var h0 = location.hash.slice(1);
+    if (h0 && document.querySelector('main > section#' + h0)) show(h0);
+  }).catch(function(){
+    $('now').innerHTML = '<div class="card">データを読み込めませんでした。</div>';
   });
 
-  function render(d){
-    document.getElementById('updated').textContent = 'ペルソナ5: The Phantom X（日本版）の自分用メモ ・ 情報は ' + d.updated + ' 時点';
-
-    // ---- now
+  // ---------- いまの結論
+  function renderNow(){
+    var d = D, owned = d.roster.filter(function(r){ return own(r.name); }).length;
     var h = '<div class="card hl"><h2>' + esc(d.verdict.title) + '</h2><ul class="pts">';
     d.verdict.points.forEach(function(p){ h += '<li>' + esc(p) + '</li>'; });
-    h += '</ul></div>';
+    h += '</ul>' + (owned ? '<p class="muted">手持ちの★5：' + owned + '体を登録済み（「手持ち」タブ）。表の緑のタグが所持キャラ。</p>' : '<p class="muted">「手持ち」タブでキャラにチェックすると、各表に所持・凸数が出る。</p>') + '</div>';
     h += '<div class="card"><h2>開催中のガチャ</h2><div class="scroll"><table class="tbl"><thead><tr><th>キャラ</th><th>ロール</th><th>引くべき度</th><th>期限</th><th>ひとこと</th></tr></thead><tbody>';
     d.current.forEach(function(c){
-      h += '<tr><td><b>' + esc(c.name) + '</b></td><td>' + esc(c.role) + '</td><td>' + stars(c.pull) + '</td><td>' + esc(c.until) + '</td><td>' + esc(c.memo) + ' ' + link(c.src) + '</td></tr>';
+      h += '<tr><td><b>' + esc(c.name) + '</b>' + ownTag(c.name) + '</td><td>' + esc(c.role) + '</td><td>' + stars(c.pull) + '</td><td>' + esc(c.until) + '</td><td>' + esc(c.memo) + ' ' + link(c.src) + '</td></tr>';
     });
-    h += '</tbody></table></div><p class="muted">引くべき度は GameWith の評価（2026-11-13〜19更新）。</p></div>';
-    h += '<div class="card"><h2>石メモ（天井まであと何連？）</h2><div class="calc">' +
-      '<label>自在結晶（石）<input id="cStone" type="number" min="0" inputmode="numeric"></label>' +
-      '<label>限定チケット（枚）<input id="cTicket" type="number" min="0" inputmode="numeric"></label>' +
-      '<label>今のガチャで引いた回数<input id="cPulled" type="number" min="0" max="110" inputmode="numeric"></label>' +
-      '</div><div class="result" id="cOut"></div><p class="muted">限定は110連でピックアップ確定。1連=150石で計算。</p></div>';
-    document.getElementById('now').innerHTML = h;
-    var calc = state.calc || {};
-    ['cStone','cTicket','cPulled'].forEach(function(id){
-      var el = document.getElementById(id); el.value = calc[id] != null ? calc[id] : '';
-      el.oninput = function(){ calc[id] = el.value; state.calc = calc; save(); upd(); };
-    });
-    function upd(){
-      var s = +calc.cStone || 0, t = +calc.cTicket || 0, p = +calc.cPulled || 0;
-      var have = Math.floor(s / 150) + t, need = Math.max(0, 110 - p);
-      document.getElementById('cOut').innerHTML = '手持ちで <b>' + have + '連</b> ・ 天井まで <b>' + need + '連</b> → ' +
-        (have >= need ? '<b>天井まで届く</b>（' + (have - need) + '連あまる）' : 'あと <b>' + (need - have) + '連</b>（' + ((need - have) * 150).toLocaleString() + '石）足りない');
-    }
-    upd();
+    h += '</tbody></table></div><p class="muted">引くべき度は GameWith の評価（2026-11-13〜19更新）。持っているキャラは凸より次の新キャラ優先が基本。</p></div>';
 
-    // ---- synergy
-    state.syn = state.syn || {};
+    h += '<div class="card"><h2>石メモ（限定の天井まであと何連？）</h2><div class="calc">' +
+      inp('cStone', '自在結晶（石）') + inp('cTicket', 'プラチナチケット（枚）') + inp('cPulled', '今のガチャで引いた回数') +
+      '</div><div class="result" id="cOut"></div><p class="muted">限定は110連でピックアップ確定。1連=150石で計算。ゴールドチケット分の石は下の計算の結果も足して表示。</p></div>';
+
+    h += '<div class="card"><h2>ゴールドチケット → 石の計算</h2><div class="calc">' +
+      inp('gTicket', 'ゴールドチケット（枚）') +
+      inp('gRate1a', '交換：認知の断片Ⅰ 何個で') + inp('gRate1b', '→ 自在結晶 何個') + inp('gCap1', '断片Ⅰで交換できる石の月上限（空欄=上限なし）') +
+      inp('gRate2a', '交換：認知の断片Ⅱ 何個で') + inp('gRate2b', '→ 自在結晶 何個') +
+      '</div><div class="result" id="gOut"></div><p class="muted">' + esc(d.goldNote) + '</p>' +
+      '<p class="muted">1回あたりの目安：★2ペルソナ（93%）で断片Ⅰ×30、被った★4（6.2%）で断片Ⅱ×6、被った★5（0.8%）で断片Ⅱ×30。恒常★5は80連で確定。</p></div>';
+    $('now').innerHTML = h;
+    ['cStone','cTicket','cPulled','gTicket','gRate1a','gRate1b','gCap1','gRate2a','gRate2b'].forEach(function(id){
+      var el = $(id); el.value = state.calc[id] != null ? state.calc[id] : '';
+      el.oninput = function(){ state.calc[id] = el.value; save(); calc(); };
+    });
+    calc();
+  }
+  function inp(id, label){ return '<label>' + esc(label) + '<input id="' + id + '" type="number" min="0" inputmode="numeric"></label>'; }
+  function num(id){ var v = parseFloat(state.calc[id]); return isFinite(v) && v >= 0 ? v : 0; }
+  function calc(){
+    // ゴールドチケット
+    var t = num('gTicket');
+    var f1 = Math.round(t * 0.93 * 30), f2 = Math.round(t * (0.062 * 6 + 0.008 * 30));
+    var s5 = Math.max(Math.floor(t / 80), Math.round(t * 0.008));
+    var g = 0, parts = [];
+    if (num('gRate1a') && num('gRate1b')) {
+      var s1 = Math.floor(f1 / num('gRate1a')) * num('gRate1b');
+      if (num('gCap1') && s1 > num('gCap1')) { parts.push('断片Ⅰ→石は今月 ' + num('gCap1').toLocaleString() + '石まで（残りの断片Ⅰは来月以降）'); s1 = num('gCap1'); }
+      g += s1;
+    }
+    if (num('gRate2a') && num('gRate2b')) g += Math.floor(f2 / num('gRate2a')) * num('gRate2b');
+    var rated = (num('gRate1a') && num('gRate1b')) || (num('gRate2a') && num('gRate2b'));
+    $('gOut').innerHTML = t ? ('ゴールドチケット <b>' + t + '枚</b> を引くと、目安で 認知の断片Ⅰ <b>約' + f1.toLocaleString() + '個</b>・断片Ⅱ <b>約' + f2.toLocaleString() + '個</b>、恒常★5が <b>' + s5 + '体前後</b>。<br>' +
+      (rated ? '→ 石に換えると <b>約' + Math.floor(g).toLocaleString() + '石</b>（限定 <b>' + Math.floor(g / 150) + '連</b>分）' : '→ 交換レートを入れると石の数が出る') +
+      (parts.length ? '<br><span class="muted">' + esc(parts.join('／')) + '</span>' : '')) : 'ゴールドチケットの枚数を入れてね。';
+    // 限定の天井
+    var bonus = Math.floor(g);
+    var s = num('cStone') + bonus, tk = num('cTicket'), p = num('cPulled');
+    var have = Math.floor(s / 150) + tk, need = Math.max(0, 110 - p);
+    $('cOut').innerHTML = '手持ちで <b>' + have + '連</b>' + (bonus ? '（ゴールドチケット分 ' + Math.floor(bonus / 150) + '連 を含む）' : '') + ' ・ 天井まで <b>' + need + '連</b> → ' +
+      (have >= need ? '<b>天井まで届く</b>（' + (have - need) + '連あまる）' : 'あと <b>' + (need - have) + '連</b>（' + ((need - have) * 150).toLocaleString() + '石）足りない');
+  }
+
+  // ---------- 手持ち
+  var mineFilter = state.mineFilter || 'all';
+  function renderMine(){
+    var d = D, roles = ['all','own','not'];
+    var h = '<div class="card"><h2>手持ちの★5キャラ</h2><p class="muted">凸数を選ぶと所持扱いになる（「―」は未所持）。専用★5武器を持っていたら「武器」にチェック。このブラウザに保存される。</p>' +
+      '<div class="filters" id="mf">' +
+      [['all','全員'],['own','所持だけ'],['not','未所持だけ'],['限定','限定'],['恒常','恒常']].map(function(f){ return '<button type="button" data-f="' + f[0] + '" aria-pressed="' + (mineFilter === f[0]) + '">' + f[1] + '</button>'; }).join('') +
+      '</div><div class="roster" id="rosterList"></div><p class="muted" id="mineSum"></p><p class="muted">' + esc(d.rosterNote) + '</p></div>';
+    $('mine').innerHTML = h;
+    $('mf').onclick = function(e){
+      var b = e.target.closest('button'); if (!b) return;
+      mineFilter = state.mineFilter = b.dataset.f; save();
+      $('mf').querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-pressed', x === b); });
+      drawRoster();
+    };
+    drawRoster();
+  }
+  function drawRoster(){
+    var h = '';
+    D.roster.forEach(function(r, i){
+      var o = state.own[r.name] || {}, has = o.c != null && o.c >= 0;
+      if (mineFilter === 'own' && !has) return;
+      if (mineFilter === 'not' && has) return;
+      if ((mineFilter === '限定' || mineFilter === '恒常') && r.kind !== mineFilter) return;
+      var opts = '<option value="-1">―</option>';
+      for (var c = 0; c <= 6; c++) opts += '<option value="' + c + '"' + (has && o.c === c ? ' selected' : '') + '>' + (c ? c + '凸' : '無凸') + '</option>';
+      h += '<div class="chara' + (has ? ' own' : '') + '"><span class="nm"><b>' + esc(r.name) + '</b><small>' + esc((r.real ? r.real + '・' : '') + r.role + '／' + r.elem + '・' + r.kind) + '</small></span>' +
+        '<select data-n="' + i + '" aria-label="' + esc(r.name) + 'の凸数">' + opts + '</select>' +
+        '<label><input type="checkbox" data-w="' + i + '"' + (o.w ? ' checked' : '') + (has ? '' : ' disabled') + '>武器</label></div>';
+    });
+    $('rosterList').innerHTML = h || '<p class="muted">該当なし</p>';
+    var n = D.roster.filter(function(r){ return own(r.name); }).length;
+    $('mineSum').textContent = '所持 ' + n + ' / ' + D.roster.length + '体';
+  }
+  document.addEventListener('change', function(e){
+    var el = e.target;
+    if (el.dataset && el.dataset.n != null) {
+      var r = D.roster[+el.dataset.n], v = +el.value, o = state.own[r.name] || {};
+      if (v < 0) delete state.own[r.name]; else { o.c = v; state.own[r.name] = o; }
+      save(); drawRoster(); renderNow(); renderFuture();
+    } else if (el.dataset && el.dataset.w != null) {
+      var r2 = D.roster[+el.dataset.w], o2 = state.own[r2.name]; if (!o2) return;
+      o2.w = el.checked; save(); renderNow();
+    }
+  });
+
+  // ---------- シナジー
+  function renderSynergy(){
     var sh = '';
-    d.synergies.forEach(function(s){
+    D.synergies.forEach(function(s){
       var done = state.syn[s.id] = state.syn[s.id] || {};
       sh += '<div class="card hl"><h2>' + esc(s.name) + '<span class="tag" style="margin-left:8px">' + esc(s.codename) + '</span></h2>' +
         '<p><b>解放条件：</b>' + esc(s.unlock) + '<br><b>必要パラメータ：</b>' + esc(s.param) + '<br><b>優先度：</b>' + esc(s.priority) + '</p>' +
@@ -170,40 +280,50 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
         '<h3>シナジーで解放されるもの</h3><ul class="pts">' + s.bonuses.map(function(b){ return '<li>Rank' + b[0] + '：' + esc(b[1]) + '</li>'; }).join('') + '</ul>' +
         '<p class="muted">出典：' + link(s.source, 'GameWith') + '（' + esc(s.sourceDate) + '更新）</p></div>';
     });
-    var syn = document.getElementById('synergy');
+    var syn = $('synergy');
     syn.innerHTML = sh;
-    syn.addEventListener('change', function(e){
+    syn.onchange = function(e){
       var cb = e.target; if (!cb.dataset || !cb.dataset.s) return;
       state.syn[cb.dataset.s][cb.dataset.k] = cb.checked; save();
       cb.closest('tr').className = cb.checked ? 'done' : '';
-    });
+    };
+  }
 
-    // ---- future
+  // ---------- 今後のキャラ
+  function renderFuture(){
     var today = new Date().toISOString().slice(0, 10);
-    var fh = '<div class="card"><h2>今後の実装予想（日本版）</h2><div class="scroll"><table class="tbl"><thead><tr><th>時期</th><th>キャラ</th><th>種類・性能</th><th>無課金の判断</th></tr></thead><tbody>';
-    d.upcoming.forEach(function(u){
-      fh += '<tr' + (u.date < today ? ' class="done"' : '') + '><td>' + esc(u.date) + '<br><span class="tag">' + esc(u.sure) + '</span></td><td><b>' + esc(u.name) + '</b></td><td>' + esc(u.kind) + '<br><span class="muted">' + esc(u.role) + '</span></td><td>' + esc(u.advice) + '</td></tr>';
+    var fh = '<div class="card"><h2>今後のガチャ予想とおすすめ度</h2><div class="scroll"><table class="tbl"><thead><tr><th>時期</th><th>キャラ</th><th>おすすめ度</th><th>理由</th><th>手持ちと相性</th></tr></thead><tbody>';
+    D.upcoming.forEach(function(u){
+      var mates = (u.with || []).filter(function(n){ return own(n); });
+      var fit = !(u.with || []).length ? '<span class="muted">―</span>' :
+        (mates.length ? '<span class="ok">◎ ' + esc(mates.join('、')) + '</span>' : '<span class="muted">相性の良いキャラ（' + esc(u.with.join('、')) + '）が未所持 → 優先度を下げてOK</span>');
+      fh += '<tr' + (u.date < today ? ' class="done"' : '') + '><td>' + esc(u.date) + '<br><span class="tag">' + esc(u.sure) + '</span></td><td><b>' + esc(u.name) + '</b><br><span class="muted">' + esc(u.kind) + '<br>' + esc(u.role) + '</span></td><td>' + stars(u.pull) + '</td><td>' + esc(u.why) + '</td><td>' + fit + '</td></tr>';
     });
-    fh += '</tbody></table></div><p class="muted">' + esc(d.upcomingNote) + '</p></div>';
-    document.getElementById('future').innerHTML = fh;
+    fh += '</tbody></table></div><p class="muted">' + esc(D.upcomingNote) + '</p></div>';
+    $('future').innerHTML = fh;
+  }
 
-    // ---- tier & gacha
+  // ---------- Tier・ガチャ・武器
+  function renderTier(){
+    var d = D;
     var th = '<div class="card"><h2>最強キャラTier（無凸）</h2><table class="tbl"><tbody>';
     d.tier.rows.forEach(function(r){ th += '<tr><th style="width:9em">' + esc(r[0]) + '</th><td>' + esc(r[1]) + '</td></tr>'; });
     th += '</tbody></table><p class="muted">' + esc(d.tier.note) + ' 出典：' + link(d.tier.src, 'GameWith') + '（' + esc(d.tier.date) + '更新）</p></div>';
-    th += '<div class="card"><h2>ガチャの仕組み</h2><table class="tbl"><tbody>';
+    th += '<div class="card hl"><h2>武器ガチャは引く？ 凸とどっちが先？</h2><ul class="pts">';
+    d.weapon.verdict.forEach(function(v){ th += '<li>' + esc(v) + '</li>'; });
+    th += '</ul><h3>武器ガチャの仕組み</h3><table class="tbl"><tbody>';
+    d.weapon.facts.forEach(function(g){ th += '<tr><th style="width:9em">' + esc(g[0]) + '</th><td>' + esc(g[1]) + '</td></tr>'; });
+    th += '</tbody></table><p class="muted">出典：' + d.weapon.src.map(function(s){ return link(s[1], s[0]); }).join('、') + '</p></div>';
+    th += '<div class="card"><h2>キャラガチャの仕組み</h2><table class="tbl"><tbody>';
     d.gacha.forEach(function(g){ th += '<tr><th style="width:9em">' + esc(g[0]) + '</th><td>' + esc(g[1]) + '</td></tr>'; });
     th += '</tbody></table></div>';
-    document.getElementById('tier').innerHTML = th;
+    $('tier').innerHTML = th;
+  }
 
-    // ---- sources
+  function renderSrc(){
     var srh = '<div class="card"><h2>資料</h2><ul class="pts">';
-    d.sources.forEach(function(s){ srh += '<li>' + link(s[1], s[0]) + '</li>'; });
-    srh += '</ul></div>';
-    document.getElementById('src').innerHTML = srh;
-
-    var h0 = location.hash.slice(1);
-    if (h0 && document.querySelector('main > section#' + h0)) show(h0);
+    D.sources.forEach(function(s){ srh += '<li>' + link(s[1], s[0]) + '</li>'; });
+    $('src').innerHTML = srh + '</ul></div>';
   }
 })();
 </script>
