@@ -128,6 +128,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
   function link(u, t){ return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(t || '出典') + '</a>'; }
   function $(id){ return document.getElementById(id); }
   var D = null, lastGold = 0;
+  var AUTO_INCOME = 80 * 14 + 6000 + 100 * 14 + 140;   // 2週間あたり（毎日任務全部・イベント完遂・マルチムVIPカード）
 
   // 手持ちの判定: 「暴走ルーチェ（池波星輝）」のような表記も先頭一致で拾う（長い名前を優先）
   function rosterOf(label){
@@ -376,8 +377,9 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
     function has(n){ return own(n) || D.upcoming.some(function(u){ return u.name.indexOf(n) === 0 && planned(u.name); }); }
     var fh = '<div class="card hl"><h2>ガチャ計画（引く予定にチェック）</h2>' +
       '<p class="muted">「引く」にチェックすると、天井（110連＝16,500石）で確保する前提で、その日までに石が足りるかを出す。今の石は「いまの結論」の石メモ（ゴールドチケット分も込み）を使う。</p>' +
-      '<div class="calc">' + inp('pIncome', '2週間で貯まる石（目安・自分で入力）') + inp('pPity', '持ち越している限定ガチャの回数') + '</div>' +
+      '<div class="calc">' + inp('pIncome', '2週間で貯まる石（空欄なら自動：' + AUTO_INCOME.toLocaleString() + '石）') + inp('pPity', '持ち越している限定ガチャの回数') + '</div>' +
       '<div class="scroll"><table class="tbl"><thead><tr><th>引く</th><th>時期</th><th>キャラ</th><th>大陸版Tier</th><th>おすすめ度</th><th>理由</th><th>手持ちと相性</th><th>石</th></tr></thead><tbody id="planBody"></tbody></table></div>' +
+      '<p class="muted">2週間の石（自動）＝ デイリー任務 80石×14日＝1,120 ＋ バージョンごとの収入（イベント・週替わりコンテンツ・配布などを全部こなす前提）6,000 ＋ マルチムVIPカード 100石×14日＝1,400 ＋ VIPカード購入時の異界宝珠300個の2週間分 140 ＝ 約' + AUTO_INCOME.toLocaleString() + '石（約' + Math.floor(AUTO_INCOME / 150) + '連）。バージョン収入の6,000はルフェルネットのガチャプランナーの既定値（2週間ごとの新キャラ実装の場合）で、目安。ゴールドチケットの断片交換分は入っていない（石メモ側で足す）。</p>' +
       '<p class="muted">' + esc(D.upcomingNote) + '</p></div>';
     $('future').innerHTML = fh;
     ['pIncome','pPity'].forEach(function(id){
@@ -385,7 +387,7 @@ footer{margin-top:24px;font-size:.8rem;color:var(--muted)}
       el.oninput = function(){ state.calc[id] = el.value; state.calcT = Date.now(); save(); drawPlan(); };
     });
     function drawPlan(){
-      var base = num('cStone') + Math.floor(lastGold) + num('cTicket') * 150, inc = num('pIncome'), used = 0, carry = num('pPity'), rows = '';
+      var base = num('cStone') + Math.floor(lastGold) + num('cTicket') * 150, inc = num('pIncome') || AUTO_INCOME, used = 0, carry = num('pPity'), rows = '';
       D.upcoming.forEach(function(u){
         var mates = (u.with || []).filter(has);
         var weak = u.need && !mates.length;
